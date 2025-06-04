@@ -11,19 +11,49 @@
 ## セットアップ
 
 1.  **Python環境**: スクリプトの実行にはPython 3が必要です。
-2.  **必要なライブラリのインストール**:
+2.  **リポジトリのクローンとサブモジュールの取得**:
+    ```bash
+    git clone <このリポジトリのURL>
+    cd <クローンしたディレクトリ名>
+    git submodule update --init --recursive
+    ```
+    このリポジトリは `libs/policy` ディレクトリにサブモジュールとして [team-mirai/policy](https://github.com/team-mirai/policy) リポジトリを含んでいます。上記の `git submodule update` コマンドでサブモジュールの内容が取得されます。
+3.  **必要なライブラリのインストール**:
     ```bash
     pip install requests tqdm openai
     ```
-3.  **GitHub Personal Access Token**: `get_policy_pr.py` を使用するには、GitHub APIにアクセスするためのPersonal Access Tokenが必要です。
+4.  **GitHub Personal Access Token**: `get_policy_pr.py` を使用するには、GitHub APIにアクセスするためのPersonal Access Tokenが必要です。
     *   `cert/github.txt` というファイルを作成し、そのファイル内にご自身のGitHub Personal Access Tokenを記述してください。
     *   **注意**: このトークンファイルはGitリポジトリにコミットしないでください。`.gitignore` に `cert/` を追加することを推奨します。
-4.  **OpenAI API Key**: `evaluate_proposals.py` を使用するには、OpenAI APIキーが必要です。
+5.  **OpenAI API Key**: `evaluate_proposals.py` を使用するには、OpenAI APIキーが必要です。
     *   環境変数 `OPENAI_API_KEY` にご自身のAPIキーを設定してください。
     ```bash
     export OPENAI_API_KEY="sk-YourActualOpenAIKey"
     ```
     (上記は一例です。お使いのシェルに合わせて環境変数を設定してください。シェルの設定ファイル (`.bashrc`, `.zshrc` など) に追記すると永続化できます。)
+
+## サブモジュールの更新
+
+`libs/policy` サブモジュールを最新版に更新するには、以下のコマンドを実行します。基本的には最新版を使用することを想定しています。
+
+**方法1: リモートの最新版に更新 (推奨)**
+
+```bash
+git submodule update --remote libs/policy
+```
+このコマンドは、サブモジュール (`libs/policy`) をそのリモートリポジトリのデフォルトブランチの最新コミットに更新します。親リポジトリでこの変更を記録するには、別途 `git add libs/policy` と `git commit` が必要です。
+
+**方法2: 手動での更新 (特定のブランチを指定する場合など)**
+
+より詳細な制御が必要な場合や、特定のブランチを追跡したい場合は、以下の手順で手動更新も可能です。
+
+```bash
+cd libs/policy
+git fetch
+git checkout main # または追跡したいブランチ名 (例: develop)
+git pull origin main # または追跡したいブランチ名
+cd ..
+```
 
 ## スクリプトの使い方
 
