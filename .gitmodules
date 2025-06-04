@@ -1,0 +1,3 @@
+[submodule "libs/policy"]
+	path = libs/policy
+	url = https://github.com/team-mirai/policy.git
