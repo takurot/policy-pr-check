@@ -4,12 +4,30 @@ import os
 import openai # OpenAIライブラリのインポートを有効化
 
 # --- お客様による設定箇所 ---
-# APIキーは環境変数 OPENAI_API_KEY から読み込むことを推奨
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+# APIキーをファイルから読み込む関数
+def get_openai_api_key(file_path="cert/openai.txt"):
+    try:
+        with open(file_path, 'r') as f:
+            key = f.read().strip()
+        if not key:
+            raise ValueError("OpenAI API Key file is empty.")
+        return key
+    except FileNotFoundError:
+        print(f"エラー: OpenAI APIキーファイルが見つかりません: {os.path.abspath(file_path)}")
+        print("スクリプトを続行できません。APIキーファイルを作成し、適切な場所に配置してください。")
+        exit(1)
+    except ValueError as ve:
+        print(f"エラー: {ve}")
+        exit(1)
+    except Exception as e:
+        print(f"エラー: OpenAI APIキーファイルの読み込み中に予期せぬエラーが発生しました: {e}")
+        exit(1)
+
+OPENAI_API_KEY = get_openai_api_key()
 MANIFEST_FILE = "merged_policies.md"
 PROPOSALS_FILE = "pull_requests_summary.json"
 OUTPUT_CSV_FILE = "evaluated_proposals.csv"
-GPT_MODEL = "gpt-4o-mini" # ご指定のモデル
+GPT_MODEL = "chatgpt-4o-latest" # ご指定のモデル
 
 # OpenAIクライアントの初期化 (APIキーは環境変数から自動的に読み込まれることを期待)
 # client = openai.OpenAI() # main関数内でAPIキーチェック後に初期化するように変更
@@ -17,65 +35,71 @@ GPT_MODEL = "gpt-4o-mini" # ご指定のモデル
 # --- OpenAI API 呼び出し関数 ---
 def evaluate_proposal_with_llm(client, manifest_content, proposal_title, proposal_body):
     """
-    OpenAI APIを使用して、提案をマニフェストに基づいて評価します。
+    OpenAIのAPIを呼び出して、提案を評価する。
     """
-    # APIキーの存在は呼び出し元(main)でチェック済み想定
+    system_prompt = """
+あなたは、経験豊富な政策評価アナリストです。
+提示されたマニフェスト（基本政策）と個別の政策提案を比較し、厳格かつ批判的な視点で評価を行ってください。
+評価の際は、各評価基準の定義をよく読み、表面的な言葉だけでなく、その背景にある実現性や影響を深く考察してください。
+スコアは1から10までの整数で、安易に平均点（5-7点）に偏らないように、メリット・デメリットを明確にした上で、大胆に点数をつけてください。
+最終的なアウトプTットは、指定されたJSON形式のみとしてください。その他のテキストは一切含めないでください。
+"""
 
-    prompt = f"""あなたは政策評価アシスタントです。以下の政党マニフェストと改善提案を分析し、指定された観点から評価してください。
-
-# 政党マニフェスト
+    prompt = f"""
+# マニフェスト（基本政策）
+```markdown
 {manifest_content}
+```
 
-# 改善提案
+# 評価対象の政策提案
 ## タイトル
 {proposal_title}
+
 ## 内容
 {proposal_body}
 
-# 評価基準と出力形式
-以下の各項目について10点満点で採点し、その評価の根拠となる考察を日本語で400字程度で記述してください。
-出力は必ず以下のJSON形式でお願いします。キーの名称も完全に一致させてください。
+---
 
-{{
-  "feasibility_score": <0-10の整数>,
-  "impact_score": <0-10の整数>,
-  "policy_alignment_score": <0-10の整数>,
-  "transparency_score": <0-10の整数>,
-  "roi_score": <0-10の整数>,
-  "rationale": "<考察 (日本語400字程度)>"
-}}
+# 評価タスク
+上記の「マニフェスト」と「政策提案」を基に、以下の5つの基準で提案を評価し、結果をJSON形式で出力してください。
 
-評価観点:
-1.  実現性 (Feasibility): 提案されている政策や改善が、現在の技術的、財政的、政治的、社会的な状況を考慮した上で、実際に実行可能か。
-2.  インパクト (Impact): 提案が実現した場合に、社会や対象とする分野に与える影響の大きさや範囲。正負両面を考慮。
-3.  政策整合性 (Policy Alignment): 提案が、提示された政党マニフェスト全体の方向性や他の主要政策と矛盾なく、整合性が取れているか。
-4.  透明性 (Transparency): 提案の意思決定プロセスや実施プロセス、効果測定の方法が、国民や関係者に対して明確で理解しやすいか。情報公開の度合い。
-5.  ROI (Return on Investment): 投じられるリソース（予算、人員、時間など）に対して、得られると期待される成果や便益の度合い。費用対効果。
+## 評価基準
+1.  **技術的・財政的・法的な実現可能性 (feasibility_score)**:
+    提案されている政策が、現在の技術、予算、法制度の枠組みの中で、どの程度現実的に実行可能か。具体的な障壁や、それを乗り越えるための前提条件も考慮して10段階で評価してください。
+2.  **社会的・経済的インパクト (impact_score)**:
+    この政策が実現した場合、社会や経済にどのような好影響をもたらすか。受益者は誰で、どのくらいの規模の影響が期待できるか。短期的な効果と長期的な効果を区別して10段階で評価してください。
+3.  **マニフェストとの整合性 (policy_alignment_score)**:
+    提示されたマニフェスト（基本政策）と、提案内容がどれだけ一致しているか。特に、マニフェストのどの項目と関連が深く、その理念を補強するものになっているか、あるいは矛盾する点はないかを10段階で評価してください。
+4.  **プロセスの透明性と説明責任 (transparency_score)**:
+    政策の実行プロセスや効果測定の方法が、市民に対してどれだけ透明性が高く、説明責任を果たせる設計になっているか。意思決定プロセスは明確か、効果を測るための客観的な指標は含まれているかを10段階で評価してください。
+5.  **費用対効果とリスク (roi_score)**:
+    投じられるリソース（予算、人員など）に対して、得られるリターン（社会的便益、経済効果など）はどの程度見込めるか。また、想定されるリスクや負の副作用も考慮し、総合的な費用対効果を10段階で評価してください。
+
+## 総合評価と根拠 (rationale)
+上記5つの評価を踏まえ、この提案の総合的な評価と、その結論に至った理由を日本語400字程度で簡潔に記述してください。
+
+## 出力形式
+以下のキーを持つJSONオブジェクトとしてください。
+- feasibility_score: 整数値 (1-10)
+- impact_score: 整数値 (1-10)
+- policy_alignment_score: 整数値 (1-10)
+- transparency_score: 整数値 (1-10)
+- roi_score: 整数値 (1-10)
+- rationale: 文字列
+
 """
     try:
-        print(f"OpenAI APIに '{proposal_title}' の評価をリクエストします...")
         response = client.chat.completions.create(
             model=GPT_MODEL,
             messages=[
-                {"role": "system", "content": "あなたは政策評価のエキスパートであり、指示されたJSON形式で正確に出力します。"},
+                {"role": "system", "content": system_prompt},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.3, # 安定した出力を得るために低めの温度設定
-            max_tokens=1000,  # 評価と考察に十分なトークン数 (400字の考察 + JSON構造)
-            response_format={"type": "json_object"}
+            response_format={"type": "json_object"},
+            temperature=0.5, # 評価の一貫性を保つため、少し低めに設定
+            max_tokens=1500,
         )
-        raw_response_content = response.choices[0].message.content
-        evaluation = json.loads(raw_response_content)
-        print(f"'{proposal_title}' の評価をAPIから取得完了。")
-        return evaluation
-    except json.JSONDecodeError as json_e:
-        print(f"エラー: '{proposal_title}' の評価結果のJSONパースに失敗しました: {json_e}")
-        print(f"失敗したレスポンス (先頭500文字): {raw_response_content[:500] if 'raw_response_content' in locals() else 'N/A'}")
-        return {
-            "feasibility_score": "JSONパースエラー", "impact_score": "JSONパースエラー",
-            "policy_alignment_score": "JSONパースエラー", "transparency_score": "JSONパースエラー",
-            "roi_score": "JSONパースエラー", "rationale": f"JSONパースエラー: {json_e}. Raw: {raw_response_content[:200] if 'raw_response_content' in locals() else 'N/A'}..."
-        }
+        return json.loads(response.choices[0].message.content)
     except Exception as e:
         print(f"エラー: '{proposal_title}' の評価中にOpenAI API呼び出しでエラーが発生しました: {e}")
         return {
@@ -85,13 +109,10 @@ def evaluate_proposal_with_llm(client, manifest_content, proposal_title, proposa
         }
 
 def main():
-    if not OPENAI_API_KEY:
-        print("エラー: 環境変数 OPENAI_API_KEY が設定されていません。")
-        print("スクリプトを続行できません。APIキーを設定してから再実行してください。")
-        return
-    print(f"OpenAI APIキーが環境変数から読み込まれました。") # APIキー自体の表示は避ける
+    # APIキーのチェックはget_openai_api_key関数内で行われるため、ここでのチェックは不要
+    print(f"OpenAI APIキーがファイルから読み込まれました。")
 
-    client = openai.OpenAI() # APIキーチェック後にクライアントを初期化
+    client = openai.OpenAI(api_key=OPENAI_API_KEY) # ファイルから読み込んだキーを使用してクライアントを初期化
 
     # マニフェストファイルの読み込み
     try:

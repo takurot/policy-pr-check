@@ -1,3 +1,9 @@
+urllib3==1.26.18
+tqdm
 requests
-urllib3<2.0
-tqdm 
+pygithub
+openai
+python-dotenv
+slack_sdk
+matplotlib
+japanize-matplotlib 
